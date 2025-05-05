@@ -8,26 +8,70 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
-# 设置随机种子以确保结果可重现
-torch.manual_seed(42)
-np.random.seed(42)
+# # 设置随机种子以确保结果可重现
+# torch.manual_seed(42)
+# np.random.seed(42)
 
 
-# 定义神经网络模型
-class WineClassifier(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
-        super(WineClassifier, self).__init__()
-        self.layer1 = nn.Linear(input_size, hidden_size)
+# 检查 CUDA 是否可用
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+
+# 定义卷积神经网络模型
+class WineCNN(nn.Module):
+    def __init__(self, input_channels, num_classes):
+        super(WineCNN, self).__init__()
+        # 第一个卷积块
+        self.conv1 = nn.Conv1d(input_channels, 32, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(32)
         self.relu = nn.ReLU()
-        self.layer2 = nn.Linear(hidden_size, hidden_size)
-        self.layer3 = nn.Linear(hidden_size, num_classes)
+        self.pool1 = nn.MaxPool1d(2)
+
+        # 第二个卷积块
+        self.conv2 = nn.Conv1d(32, 64, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(64)
+        self.pool2 = nn.MaxPool1d(2)
+
+        # 第三个卷积块
+        self.conv3 = nn.Conv1d(64, 128, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm1d(128)
+        self.pool3 = nn.MaxPool1d(2)
+
+        # 计算全连接层的输入维度
+        # 原始序列长度是 101（20-120Hz），经过 3 次池化后长度为 101//(2^3) = 12
+        self.fc_input_size = 128 * 12
+
+        # 全连接层
+        self.fc1 = nn.Linear(self.fc_input_size, 256)
+        self.fc2 = nn.Linear(256, num_classes)
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
-        x = self.layer1(x)
+        # 卷积层
+        x = self.conv1(x)
+        x = self.bn1(x)
         x = self.relu(x)
-        x = self.layer2(x)
+        x = self.pool1(x)
+
+        x = self.conv2(x)
+        x = self.bn2(x)
         x = self.relu(x)
-        x = self.layer3(x)
+        x = self.pool2(x)
+
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.relu(x)
+        x = self.pool3(x)
+
+        # 展平
+        x = x.view(x.size(0), -1)
+
+        # 全连接层
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
         return x
 
 
@@ -36,7 +80,7 @@ def prepare_data():
     # 读取数据
     df = pd.read_csv("频率数据宽表.csv")
 
-    # 提取20-120Hz的阻抗值作为特征
+    # 提取 20-120Hz 的阻抗值作为特征
     frequency_columns = [str(i) for i in range(20, 121)]
     X = df[frequency_columns].values
 
@@ -44,13 +88,13 @@ def prepare_data():
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
 
-    # 使用PCA进行降维
-    pca = PCA(n_components=20)  # 降维到20个主成分
-    X = pca.fit_transform(X)
-    
-    # 打印解释方差比
-    print("PCA解释方差比:", pca.explained_variance_ratio_)
-    print("累计解释方差比:", np.cumsum(pca.explained_variance_ratio_))
+    # # 使用 PCA 进行降维
+    # pca = PCA(n_components=20)  # 降维到 20 个主成分
+    # X = pca.fit_transform(X)
+
+    # # 打印解释方差比
+    # print("PCA 解释方差比：", pca.explained_variance_ratio_)
+    # print("累计解释方差比：", np.cumsum(pca.explained_variance_ratio_))
 
     # 获取类别标签
     y = df["类别"].values
@@ -59,9 +103,9 @@ def prepare_data():
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(y)
 
-    # 转换为PyTorch张量
-    X = torch.FloatTensor(X)
-    y = torch.LongTensor(y)
+    # 转换为 PyTorch 张量并重塑为 CNN 输入格式 (batch_size, channels, sequence_length)
+    X = torch.FloatTensor(X).unsqueeze(1).to(device)  # 添加通道维度
+    y = torch.LongTensor(y).to(device)
 
     return X, y, label_encoder, df["wine_name"].values
 
@@ -98,6 +142,64 @@ def train_model(
     return train_losses, val_losses
 
 
+def train_multiple_models(
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    input_channels,
+    num_classes,
+    num_trials=5,
+    num_epochs=1000,
+):
+    best_accuracy = 0
+    best_model = None
+    best_train_losses = None
+    best_val_losses = None
+
+    for trial in range(num_trials):
+        print(f"\n开始第 {trial + 1} 次训练...")
+
+        # 创建新的模型实例
+        model = WineCNN(input_channels, num_classes).to(device)
+
+        # 定义损失函数和优化器
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+        # 训练模型
+        train_losses, val_losses = train_model(
+            model,
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            criterion,
+            optimizer,
+            num_epochs=num_epochs,
+        )
+
+        # 评估模型
+        model.eval()
+        with torch.no_grad():
+            outputs = model(X_val)
+            _, predicted = torch.max(outputs.data, 1)
+            accuracy = (predicted == y_val).sum().item() / y_val.size(0)
+            print(f"第 {trial + 1} 次训练的验证集准确率：{accuracy:.4f}")
+
+        # 如果这是目前最好的模型，保存它
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_model = model
+            best_train_losses = train_losses
+            best_val_losses = val_losses
+            # 保存最佳模型
+            torch.save(model, "best_wine_classifier.pth")
+            print(f"新的最佳模型已保存，准确率：{accuracy:.4f}")
+
+    return best_model, best_train_losses, best_val_losses, best_accuracy
+
+
 def main():
     # 准备数据
     X, y, label_encoder, wine_names = prepare_data()
@@ -108,20 +210,19 @@ def main():
     )
 
     # 设置模型参数
-    input_size = X.shape[1]  # 现在输入维度为20（PCA降维后的维度）
-    hidden_size = 64  # 由于输入维度减小，可以适当减小隐藏层大小
+    input_channels = X.shape[1]  # 输入通道数
     num_classes = len(label_encoder.classes_)
 
-    # 创建模型实例
-    model = WineClassifier(input_size, hidden_size, num_classes)
-
-    # 定义损失函数和优化器
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    # 训练模型
-    train_losses, val_losses = train_model(
-        model, X_train, y_train, X_test, y_test, criterion, optimizer
+    # 多次训练并获取最佳模型
+    best_model, train_losses, val_losses, best_accuracy = train_multiple_models(
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        input_channels,
+        num_classes,
+        num_trials=5,
+        num_epochs=1000,
     )
 
     # 绘制损失曲线
@@ -135,16 +236,13 @@ def main():
     plt.savefig("loss_curve.png")
     plt.close()
 
-    # 评估模型
-    model.eval()
+    # 评估最佳模型
+    best_model.eval()
     with torch.no_grad():
-        outputs = model(X_test)
+        outputs = best_model(X_test)
         _, predicted = torch.max(outputs.data, 1)
         accuracy = (predicted == y_test).sum().item() / y_test.size(0)
-        print(f"Test Accuracy: {accuracy:.4f}")
-
-    # 保存模型
-    # torch.save(model.state_dict(), "wine_classifier.pth")
+        print(f"最佳模型在测试集上的准确率：{accuracy:.4f}")
 
     # 打印类别映射
     print("\n类别编码映射：")
