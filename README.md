@@ -60,19 +60,81 @@
 ### 4.2 CNN 分类器 (wine_classifier_cnn.py)
 使用卷积神经网络 (CNN) 构建的葡萄酒分类模型：
 - 模型架构：
-  - 三个卷积层，每层后接批归一化和最大池化
-  - 卷积核大小：5，步长：1，填充：2
-  - 通道数依次为：32 -> 64 -> 128
-  - 全连接层：256 个神经元，输出层为类别数
-  - 使用 Dropout(0.5) 防止过拟合
+  - 初始卷积层：7x1 卷积核，32 通道
+  - 三个残差块，每块包含：
+    - 两个 3x1 卷积层
+    - 批归一化层
+    - LeakyReLU 激活函数
+    - 残差连接
+  - 注意力机制：每个残差块后接注意力模块
+  - 最大池化层：2x1 池化核
+  - 全连接层：512 -> 256 -> 类别数
+  - 使用 Dropout(0.5) 和 Dropout(0.3) 防止过拟合
 - 训练过程：
-  - 使用 Adam 优化器
+  - 使用 AdamW 优化器，权重衰减 0.01
   - 交叉熵损失函数
-  - 训练 5000 个 epoch
-  - 保存训练过程中的损失曲线到`loss_curve_cnn.png`
+  - 使用 ReduceLROnPlateau 动态调整学习率
+  - 训练 2000 个 epoch
+  - 可选启用早停机制（默认关闭）
+  - 使用 3 折交叉验证
+  - 设置随机种子确保结果可重现
 - 模型评估：
   - 在测试集上评估模型准确率
   - 输出类别编码映射关系
+  - 计算平均准确率和标准差
+
+#### 4.2.1 已实现的优化点
+- 残差连接（Residual Connections）：帮助解决梯度消失问题，使网络更容易训练
+- 注意力机制（Attention Mechanism）：让模型关注重要的频率特征
+- 改进的激活函数：使用 LeakyReLU 替代 ReLU，缓解神经元死亡问题
+- 学习率调度：使用 ReduceLROnPlateau 动态调整学习率
+- 权重衰减：使用 AdamW 优化器，添加 L2 正则化
+- 交叉验证：使用 K 折交叉验证提供更可靠的性能评估
+- 早停机制：可选启用，防止过拟合
+
+#### 4.2.2 未来优化方向
+1. 模型架构优化：
+   - 尝试更深的网络结构（如 ResNet、DenseNet）
+   - 实验不同的注意力机制（如 Transformer、Squeeze-and-Excitation）
+   - 使用更复杂的卷积操作（如空洞卷积、可分离卷积）
+   - 添加跳跃连接（Skip Connections）和特征融合
+
+2. 训练策略优化：
+   - 实现更复杂的学习率调度策略（如 OneCycleLR、CosineAnnealing）
+   - 添加标签平滑（Label Smoothing）技术
+   - 实现混合精度训练（Mixed Precision Training）
+   - 使用梯度裁剪（Gradient Clipping）
+   - 实验不同的优化器（如 Ranger、Lion）
+
+3. 数据增强：
+   - 添加频率域的数据增强（如随机频率偏移、噪声添加）
+   - 实现样本混合技术（如 Mixup、CutMix）
+   - 添加对抗训练（Adversarial Training）
+
+4. 特征工程：
+   - 提取频域特征（如 FFT、小波变换）
+   - 添加统计特征（如均值、方差、偏度、峰度）
+   - 实现特征选择算法（如 Lasso、RFE）
+
+5. 集成学习：
+   - 实现模型集成（如 Bagging、Boosting）
+   - 使用模型蒸馏（Model Distillation）
+   - 实验不同的投票策略
+
+6. 超参数优化：
+   - 使用贝叶斯优化（Bayesian Optimization）
+   - 实现网格搜索（Grid Search）
+   - 使用随机搜索（Random Search）
+
+7. 模型解释性：
+   - 添加特征重要性分析
+   - 实现注意力可视化
+   - 使用 SHAP 值解释模型预测
+
+8. 部署优化：
+   - 模型量化（Model Quantization）
+   - 模型剪枝（Model Pruning）
+   - 实现模型压缩技术
 
 ### 4.3 特征选择分类器 (wine_classifier_feature_choose.py)
 通过特征选择优化的葡萄酒分类模型：
