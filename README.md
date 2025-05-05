@@ -326,3 +326,5 @@ python wine_inference.py
    - 模型量化（Model Quantization）
    - 模型剪枝（Model Pruning）
    - 实现模型压缩技术
+
+> Cursor 核动力驱动
