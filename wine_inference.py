@@ -4,6 +4,18 @@ from sklearn.preprocessing import StandardScaler
 import pandas as pd
 from wine_classifier import WineCNN
 
+'''
+如果跑不动，上面报错找不到包，需要确保 PYTHONPATH 是当前项目根目录
+```bash
+# linux
+export PYTHONPATH=$PWD
+# windows
+set PYTHONPATH=%cd%
+# powershell
+$env:PYTHONPATH = $PWD
+```
+'''
+
 class WineClassifier:
     def __init__(self, model_path="models/best_wine_classifier.pth"):
         # 检查 CUDA 是否可用
