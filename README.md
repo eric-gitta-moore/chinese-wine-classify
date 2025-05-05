@@ -215,3 +215,7 @@ uv 的优势：
 - 更好的依赖解析
 - 支持锁定文件
 - 与 pip 完全兼容
+
+## 数据集
+
+- [raw_data.zip](https://github.com/eric-gitta-moore/chinese-wine-classify/releases/tag/v0.0.1)
