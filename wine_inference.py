@@ -2,72 +2,21 @@ import torch
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
+from wine_classifier import WineCNN
 
 class WineClassifier:
-    def __init__(self, model_path="best_wine_classifier.pth"):
+    def __init__(self, model_path="models/best_wine_classifier.pth"):
         # 检查 CUDA 是否可用
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
         
-        # 加载模型
-        self.model = self._load_model(model_path)
+        # 加载整个模型，设置 weights_only=False
+        self.model = torch.load(model_path, map_location=self.device, weights_only=False)
         self.model.eval()  # 设置为评估模式
         
         # 初始化标准化器
         self.scaler = StandardScaler()
         
-    def _load_model(self, model_path):
-        # 定义模型结构
-        class WineCNN(torch.nn.Module):
-            def __init__(self, input_channels=1, num_classes=3):
-                super(WineCNN, self).__init__()
-                self.conv1 = torch.nn.Conv1d(input_channels, 32, kernel_size=3, padding=1)
-                self.bn1 = torch.nn.BatchNorm1d(32)
-                self.relu = torch.nn.ReLU()
-                self.pool1 = torch.nn.MaxPool1d(2)
-
-                self.conv2 = torch.nn.Conv1d(32, 64, kernel_size=3, padding=1)
-                self.bn2 = torch.nn.BatchNorm1d(64)
-                self.pool2 = torch.nn.MaxPool1d(2)
-
-                self.conv3 = torch.nn.Conv1d(64, 128, kernel_size=3, padding=1)
-                self.bn3 = torch.nn.BatchNorm1d(128)
-                self.pool3 = torch.nn.MaxPool1d(2)
-
-                self.fc_input_size = 128 * 12
-                self.fc1 = torch.nn.Linear(self.fc_input_size, 256)
-                self.fc2 = torch.nn.Linear(256, num_classes)
-                self.dropout = torch.nn.Dropout(0.5)
-
-            def forward(self, x):
-                x = self.conv1(x)
-                x = self.bn1(x)
-                x = self.relu(x)
-                x = self.pool1(x)
-
-                x = self.conv2(x)
-                x = self.bn2(x)
-                x = self.relu(x)
-                x = self.pool2(x)
-
-                x = self.conv3(x)
-                x = self.bn3(x)
-                x = self.relu(x)
-                x = self.pool3(x)
-
-                x = x.view(x.size(0), -1)
-                x = self.fc1(x)
-                x = self.relu(x)
-                x = self.dropout(x)
-                x = self.fc2(x)
-                return x
-
-        # 创建模型实例并加载权重
-        model = WineCNN()
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
-        model.to(self.device)
-        return model
-
     def preprocess_data(self, data):
         """预处理输入数据"""
         # 确保数据是 numpy 数组
@@ -107,9 +56,16 @@ def main():
         # 进行预测
         predictions, probabilities = classifier.predict(test_data)
         
-        # 打印结果
-        print("预测结果：", predictions)
-        print("预测概率：", probabilities)
+        # 获取预测类别的概率
+        predicted_probabilities = [prob[pred] for pred, prob in zip(predictions, probabilities)]
+        
+        # 将预测结果和概率添加到原始数据框中
+        df['预测结果'] = predictions
+        df['预测概率'] = predicted_probabilities
+        
+        # 保存结果到新的 CSV 文件
+        df.to_csv('result.csv', index=False, encoding='utf-8-sig')
+        print("预测结果已保存到 result.csv")
         
     except Exception as e:
         print(f"错误：{str(e)}")
